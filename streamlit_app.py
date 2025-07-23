@@ -33,29 +33,86 @@ def calculate_score(distance, weight, parcels, zone_class, order_type):
 # ========================
 st.set_page_config(page_title="Eastern Union Route Planner", layout="wide")
 
-# خلفية رسمية بدون إيموجي
+# خلفية متدرجة ناعمة + مكان اللوجو
 st.markdown("""
     <style>
+    /* خلفية بتدرج هادي وحركة خفيفة */
     body {
-        background: linear-gradient(135deg, #9fd3f4, #0b1d3a);
-        color: #e0e6ed;
+        background: linear-gradient(120deg, #0b1d3a, #1f487c, #89c4f4);
+        background-size: 400% 400%;
+        animation: gradientMove 12s ease infinite;
+        color: #e6edf5;
     }
+    @keyframes gradientMove {
+        0% {background-position: 0% 50%;}
+        50% {background-position: 100% 50%;}
+        100% {background-position: 0% 50%;}
+    }
+
+    /* اللوجو والعنوان */
+    .logo-container {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .logo-container img {
+        width: 80px;
+        filter: drop-shadow(0 0 8px rgba(173,216,230,0.4));
+    }
+    .logo-text {
+        font-size: 20px;
+        font-weight: 600;
+        color: #d4ecff;
+        letter-spacing: 1px;
+        margin-top: 5px;
+    }
+    .tagline {
+        font-size: 14px;
+        color: #aacbe6;
+        font-style: italic;
+        margin-bottom: 20px;
+    }
+
+    /* تنسيقات الأزرار والنصوص */
     .stButton>button {
-        background: linear-gradient(90deg, #1f6fb2, #0b2d55);
-        color: white;
+        background: linear-gradient(90deg, #2c78b5, #145083);
+        color: #fff;
         border: none;
         padding: 0.6rem 1.2rem;
         border-radius: 6px;
         font-weight: bold;
+        transition: 0.3s ease-in-out;
     }
+    .stButton>button:hover {
+        background: linear-gradient(90deg, #3a8cd3, #1d5c99);
+        transform: scale(1.03);
+    }
+
     .stNumberInput label, .stSelectbox label {
         font-weight: 500;
-        color: #cdd9e5;
+        color: #e6edf5;
+    }
+
+    /* Fade-in للنتائج */
+    .fade-in {
+        animation: fadeIn 0.8s ease-in-out;
+    }
+    @keyframes fadeIn {
+        from {opacity: 0; transform: translateY(5px);}
+        to {opacity: 1; transform: translateY(0);}
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("Eastern Union • Dynamic Route Planner")
+# مكان اللوجو الرسمي
+st.markdown("""
+<div class="logo-container">
+    <img src="eastren_union_favicon-removebg-preview.png" alt="Eastern Union Logo">
+    <div class="logo-text">EASTERN UNION</div>
+    <div class="tagline">الكفاءة... منهج وليست صدفة</div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("<h2 style='text-align:center;'>Dynamic Route Planner</h2>", unsafe_allow_html=True)
 
 # نقطة البداية
 st.subheader("نقطة البداية")
@@ -95,11 +152,13 @@ if st.button("احسب المسار الأمثل"):
     # رتب الطلبات حسب الـ Score
     sorted_orders = sorted(orders, key=lambda x: x["score"])
 
+    st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.subheader("الترتيب المقترح")
     for i, order in enumerate(sorted_orders, start=1):
         st.write(
             f"{i}. ({order['lat']:.6f}, {order['lon']:.6f}) | المسافة: {order['distance']:.2f} كم | Score: {order['score']:.2f}"
         )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # رسم الخريطة
     m = folium.Map(location=[start_lat, start_lon], zoom_start=12)
