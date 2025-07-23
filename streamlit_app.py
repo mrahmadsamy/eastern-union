@@ -1,99 +1,65 @@
 import streamlit as st
 import folium
-from folium.plugins import MarkerCluster
-from math import radians, cos, sin, asin, sqrt
+from streamlit_folium import st_folium
 
-# ========================
-# دالة حساب المسافة بين نقطتين بالإحداثيات
-# ========================
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371  # نصف قطر الأرض بالكيلومتر
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
-    c = 2 * asin(sqrt(a))
-    return R * c
+st.set_page_config(page_title="Eastern Union Route Planner", layout="wide")
 
-# ========================
-# دالة حساب الـ Score
-# ========================
-def calculate_score(distance, weight, parcels, zone_class, order_type):
-    # تحويل كلاس الحي إلى رقم
-    zone_map = {"A": 1.0, "B": 1.5, "C": 2.0}
-    Z = zone_map.get(zone_class.upper(), 1.5)
-    
-    # نوع الطلب
-    type_map = {"Delivery": 1.0, "Pickup": 1.2, "Linked": 0.8}
-    T = type_map.get(order_type, 1.0)
+st.title("🚚 Eastern Union Dynamic Route Planner")
 
-    # المعادلة
-    score = (distance * 1.0 + weight * 0.5 + parcels * 0.3) * Z * T
-    return score
+# تخزين البيانات
+if "points" not in st.session_state:
+    st.session_state.points = []
 
-# ========================
-# الواجهة
-# ========================
-st.title("🚚 Dynamic Route Planner with Custom Scoring")
+st.sidebar.header("➕ إضافة نقطة جديدة")
 
-# نقطة البداية
-st.subheader("📍 نقطة البداية")
-start_lat = st.number_input("Latitude (مثال: 30.0444)", value=30.0444)
-start_lon = st.number_input("Longitude (مثال: 31.2357)", value=31.2357)
+# إدخال الإحداثيات بدقة كاملة
+lat = st.sidebar.text_input("Latitude (مثال: 30.018745)")
+lon = st.sidebar.text_input("Longitude (مثال: 31.230984)")
+weight = st.sidebar.number_input("وزن الطرود (كجم)", min_value=0.1, step=0.1)
+num_packages = st.sidebar.number_input("عدد الطرود", min_value=1, step=1)
+zone_class = st.sidebar.selectbox("كلاس الحي", ["A", "B", "C"])
+order_type = st.sidebar.selectbox("نوع الطلب", ["Delivery", "Pickup", "Linked Delivery"])
 
-# إدخال الطلبات
-st.subheader("📦 أدخل بيانات الطلبات")
+if st.sidebar.button("✅ أضف النقطة"):
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+        # نضيف النقطة بدون أي تقريب
+        st.session_state.points.append({
+            "lat": lat_f,
+            "lon": lon_f,
+            "weight": weight,
+            "num_packages": num_packages,
+            "zone": zone_class,
+            "type": order_type
+        })
+        st.sidebar.success("✅ تم إضافة النقطة بدقة كاملة!")
+    except ValueError:
+        st.sidebar.error("❌ تأكد من كتابة الإحداثيات بشكل صحيح")
 
-num_orders = st.number_input("كم طلب تريد إضافته؟", min_value=1, max_value=50, value=3)
+# عرض النقاط المدخلة بدقتها الكاملة
+if st.session_state.points:
+    st.subheader("📍 النقاط المدخلة (بدقة كاملة)")
+    for i, p in enumerate(st.session_state.points, start=1):
+        st.write(
+            f"**{i}. ({p['lat']:.6f}, {p['lon']:.6f})** | وزن: {p['weight']} كجم | طرود: {p['num_packages']} | حي: {p['zone']} | نوع: {p['type']}"
+        )
 
-orders = []
-for i in range(num_orders):
-    st.markdown(f"### الطلب رقم {i+1}")
-    lat = st.number_input(f"Latitude الطلب {i+1}", value=30.05 + i*0.01)
-    lon = st.number_input(f"Longitude الطلب {i+1}", value=31.23 + i*0.01)
-    weight = st.number_input(f"الوزن (كجم) للطلب {i+1}", value=5.0)
-    parcels = st.number_input(f"عدد الطرود للطلب {i+1}", value=2)
-    zone_class = st.selectbox(f"كلاس الحي للطلب {i+1}", ["A", "B", "C"])
-    order_type = st.selectbox(f"نوع الطلب {i+1}", ["Delivery", "Pickup", "Linked"])
-    
-    orders.append({
-        "lat": lat,
-        "lon": lon,
-        "weight": weight,
-        "parcels": parcels,
-        "zone": zone_class,
-        "type": order_type
-    })
+    # نرسم الخريطة بالإحداثيات الحقيقية
+    avg_lat = sum([p["lat"] for p in st.session_state.points]) / len(st.session_state.points)
+    avg_lon = sum([p["lon"] for p in st.session_state.points]) / len(st.session_state.points)
+    m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12)
 
-if st.button("🚀 احسب المسار الأمثل"):
-    # احسب المسافات و الـ Score
-    for order in orders:
-        dist = haversine(start_lat, start_lon, order["lat"], order["lon"])
-        order["distance"] = dist
-        order["score"] = calculate_score(dist, order["weight"], order["parcels"], order["zone"], order["type"])
-    
-    # رتب الطلبات حسب الـ Score
-    sorted_orders = sorted(orders, key=lambda x: x["score"])
-
-    # اعرض الترتيب
-    st.subheader("✅ الترتيب المقترح")
-    for i, order in enumerate(sorted_orders, start=1):
-        st.write(f"{i}. ({order['lat']}, {order['lon']}) | المسافة: {order['distance']:.2f} كم | Score: {order['score']:.2f}")
-
-    # ارسم الخريطة
-    m = folium.Map(location=[start_lat, start_lon], zoom_start=12)
-    folium.Marker([start_lat, start_lon], popup="🚩 Start", icon=folium.Icon(color="green")).add_to(m)
-
-    marker_cluster = MarkerCluster().add_to(m)
-    for i, order in enumerate(sorted_orders, start=1):
+    # إضافة النقاط بدقة كاملة
+    for i, p in enumerate(st.session_state.points, start=1):
         folium.Marker(
-            [order["lat"], order["lon"]],
-            popup=f"#{i} - {order['type']} | {order['score']:.2f}",
-            icon=folium.Icon(color="blue" if order["type"]=="Delivery" else "red")
-        ).add_to(marker_cluster)
+            [p["lat"], p["lon"]],
+            popup=f"نقطة {i}\nوزن: {p['weight']} كجم | طرود: {p['num_packages']} | حي: {p['zone']} | نوع: {p['type']}",
+            tooltip=f"نقطة {i} ({p['lat']:.6f}, {p['lon']:.6f})"
+        ).add_to(m)
 
-    # وصل النقاط بخط
-    route_coords = [(start_lat, start_lon)] + [(o["lat"], o["lon"]) for o in sorted_orders]
-    folium.PolyLine(route_coords, color="orange", weight=3).add_to(m)
+    st_folium(m, width=900, height=500)
 
-    st.subheader("🗺️ المسار على الخريطة")
-    st.components.v1.html(m._repr_html_(), height=500)
+else:
+    st.info("ℹ️ لم يتم إضافة أي نقاط بعد.")
+
