@@ -1,105 +1,99 @@
 import streamlit as st
 import folium
-from streamlit_folium import st_folium
-from geopy.geocoders import Nominatim
-import requests
+from folium.plugins import MarkerCluster
+from math import radians, cos, sin, asin, sqrt
 
-st.set_page_config(page_title="Eastern Union Advanced Route Optimizer", layout="wide")
+# ========================
+# دالة حساب المسافة بين نقطتين بالإحداثيات
+# ========================
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # نصف قطر الأرض بالكيلومتر
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a))
+    return R * c
 
-st.title("🚚 Eastern Union – Dynamic Smart Routing")
-st.write("النظام يحسب أفضل ترتيب للطلبات بناءً على المسافة + الوزن + عدد الطرود + صعوبة المنطقة + نوع الطلب")
+# ========================
+# دالة حساب الـ Score
+# ========================
+def calculate_score(distance, weight, parcels, zone_class, order_type):
+    # تحويل كلاس الحي إلى رقم
+    zone_map = {"A": 1.0, "B": 1.5, "C": 2.0}
+    Z = zone_map.get(zone_class.upper(), 1.5)
+    
+    # نوع الطلب
+    type_map = {"Delivery": 1.0, "Pickup": 1.2, "Linked": 0.8}
+    T = type_map.get(order_type, 1.0)
 
-# ========= إعداد Geocoder =========
-geolocator = Nominatim(user_agent="eastern_union_optimizer")
+    # المعادلة
+    score = (distance * 1.0 + weight * 0.5 + parcels * 0.3) * Z * T
+    return score
 
-def get_coords(address):
-    location = geolocator.geocode(address)
-    if location:
-        return (location.latitude, location.longitude)
-    return None
+# ========================
+# الواجهة
+# ========================
+st.title("🚚 Dynamic Route Planner with Custom Scoring")
 
-# ========= نقطة البداية =========
-st.sidebar.header("🏢 نقطة البداية")
-start_address = st.sidebar.text_input("أدخل عنوان نقطة البداية", "ميدان التحرير، القاهرة")
-start_coords = get_coords(start_address) if start_address else None
+# نقطة البداية
+st.subheader("📍 نقطة البداية")
+start_lat = st.number_input("Latitude (مثال: 30.0444)", value=30.0444)
+start_lon = st.number_input("Longitude (مثال: 31.2357)", value=31.2357)
 
-# ========= بيانات الطلبات =========
-if "orders" not in st.session_state:
-    st.session_state.orders = []
+# إدخال الطلبات
+st.subheader("📦 أدخل بيانات الطلبات")
 
-st.sidebar.subheader("➕ إضافة طلب جديد")
-address = st.sidebar.text_input("📍 عنوان الطلب")
-weight = st.sidebar.number_input("⚖️ الوزن الإجمالي (كجم)", min_value=0.1, step=0.5)
-num_packages = st.sidebar.number_input("📦 عدد الطرود", min_value=1, step=1)
-order_type = st.sidebar.selectbox("🛠 نوع الطلب", ["Delivery", "Pickup", "Linked Delivery"])
-zone_class = st.sidebar.selectbox("🏙️ Class الحي", ["A", "B", "C"])
+num_orders = st.number_input("كم طلب تريد إضافته؟", min_value=1, max_value=50, value=3)
 
-if st.sidebar.button("✅ إضافة الطلب"):
-    coords = get_coords(address)
-    if coords:
-        st.session_state.orders.append({
-            "address": address,
-            "lat": coords[0],
-            "lon": coords[1],
-            "weight": weight,
-            "num_packages": num_packages,
-            "order_type": order_type,
-            "zone_class": zone_class
-        })
-        st.sidebar.success(f"تم إضافة الطلب: {address}")
-    else:
-        st.sidebar.error("❌ العنوان غير صحيح")
+orders = []
+for i in range(num_orders):
+    st.markdown(f"### الطلب رقم {i+1}")
+    lat = st.number_input(f"Latitude الطلب {i+1}", value=30.05 + i*0.01)
+    lon = st.number_input(f"Longitude الطلب {i+1}", value=31.23 + i*0.01)
+    weight = st.number_input(f"الوزن (كجم) للطلب {i+1}", value=5.0)
+    parcels = st.number_input(f"عدد الطرود للطلب {i+1}", value=2)
+    zone_class = st.selectbox(f"كلاس الحي للطلب {i+1}", ["A", "B", "C"])
+    order_type = st.selectbox(f"نوع الطلب {i+1}", ["Delivery", "Pickup", "Linked"])
+    
+    orders.append({
+        "lat": lat,
+        "lon": lon,
+        "weight": weight,
+        "parcels": parcels,
+        "zone": zone_class,
+        "type": order_type
+    })
 
-# ========= دوال حساب المسافة و Score =========
-def get_distance_km(lat1, lon1, lat2, lon2):
-    url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
-    r = requests.get(url)
-    data = r.json()
-    if "routes" in data:
-        return round(data["routes"][0]["distance"] / 1000, 2)
-    return 9999
+if st.button("🚀 احسب المسار الأمثل"):
+    # احسب المسافات و الـ Score
+    for order in orders:
+        dist = haversine(start_lat, start_lon, order["lat"], order["lon"])
+        order["distance"] = dist
+        order["score"] = calculate_score(dist, order["weight"], order["parcels"], order["zone"], order["type"])
+    
+    # رتب الطلبات حسب الـ Score
+    sorted_orders = sorted(orders, key=lambda x: x["score"])
 
-def zone_impact(zone):
-    return {"A": 1.0, "B": 1.5, "C": 2.0}[zone]
+    # اعرض الترتيب
+    st.subheader("✅ الترتيب المقترح")
+    for i, order in enumerate(sorted_orders, start=1):
+        st.write(f"{i}. ({order['lat']}, {order['lon']}) | المسافة: {order['distance']:.2f} كم | Score: {order['score']:.2f}")
 
-def order_type_impact(order_type):
-    return {"Delivery": 1.0, "Pickup": 1.2, "Linked Delivery": 0.8}[order_type]
+    # ارسم الخريطة
+    m = folium.Map(location=[start_lat, start_lon], zoom_start=12)
+    folium.Marker([start_lat, start_lon], popup="🚩 Start", icon=folium.Icon(color="green")).add_to(m)
 
-def calculate_score(distance, weight, num_packages, zone_class, order_type):
-    base = (distance * 1.0) + (weight * 1.5) + (num_packages * 0.5)
-    return round(base * zone_impact(zone_class) * order_type_impact(order_type), 2)
+    marker_cluster = MarkerCluster().add_to(m)
+    for i, order in enumerate(sorted_orders, start=1):
+        folium.Marker(
+            [order["lat"], order["lon"]],
+            popup=f"#{i} - {order['type']} | {order['score']:.2f}",
+            icon=folium.Icon(color="blue" if order["type"]=="Delivery" else "red")
+        ).add_to(marker_cluster)
 
-# ========= زر التخطيط =========
-if st.button("🚀 خطط المسار"):
-    if start_coords and st.session_state.orders:
-        results = []
-        for o in st.session_state.orders:
-            dist = get_distance_km(start_coords[0], start_coords[1], o["lat"], o["lon"])
-            score = calculate_score(dist, o["weight"], o["num_packages"], o["zone_class"], o["order_type"])
-            o["distance_km"] = dist
-            o["score"] = score
-            results.append(o)
-        
-        # ترتيب الطلبات حسب Score
-        sorted_orders = sorted(results, key=lambda x: x["score"])
-        st.subheader("📋 الطلبات مرتبة حسب الأولوية")
-        st.table(sorted_orders)
+    # وصل النقاط بخط
+    route_coords = [(start_lat, start_lon)] + [(o["lat"], o["lon"]) for o in sorted_orders]
+    folium.PolyLine(route_coords, color="orange", weight=3).add_to(m)
 
-        # خريطة المسار
-        st.subheader("🗺️ خريطة المسار")
-        m = folium.Map(location=start_coords, zoom_start=12)
-        folium.Marker(start_coords, popup="🏢 نقطة البداية", icon=folium.Icon(color="green")).add_to(m)
-
-        for idx, order in enumerate(sorted_orders, start=1):
-            folium.Marker(
-                [order["lat"], order["lon"]],
-                popup=f"{idx}. {order['order_type']} | {order['address']} | {order['distance_km']}km | {order['weight']}kg",
-                icon=folium.Icon(color="blue" if order["order_type"] == "Delivery" else "red")
-            ).add_to(m)
-
-        st_folium(m, width=900, height=500)
-
-    else:
-        st.warning("⚠️ أدخل نقطة البداية وأضف الطلبات أولًا")
-else:
-    st.info("📌 أدخل الطلبات واضغط 🚀 خطط المسار")
+    st.subheader("🗺️ المسار على الخريطة")
+    st.components.v1.html(m._repr_html_(), height=500)
