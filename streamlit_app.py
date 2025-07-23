@@ -106,7 +106,7 @@ st.markdown("""
 # مكان اللوجو الرسمي
 st.markdown("""
 <div class="logo-container">
-    <img src="eastren_union_favicon-removebg-preview.png" alt="Eastern Union Logo">
+    <img src="https://github.com/mrahmadsamy/eastern-union/blob/main/eastren_union_favicon-removebg-preview.png?raw=true" alt="Eastern Union Logo">
     <div class="logo-text">EASTERN UNION</div>
     <div class="tagline">الكفاءة... منهج وليست صدفة</div>
 </div>
