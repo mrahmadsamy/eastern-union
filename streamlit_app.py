@@ -18,85 +18,71 @@ def haversine(lat1, lon1, lat2, lon2):
 # دالة حساب الـ Score
 # ========================
 def calculate_score(distance, weight, parcels, zone_class, order_type):
+    # تحويل كلاس الحي إلى رقم
     zone_map = {"A": 1.0, "B": 1.5, "C": 2.0}
     Z = zone_map.get(zone_class.upper(), 1.5)
+    
+    # نوع الطلب
     type_map = {"Delivery": 1.0, "Pickup": 1.2, "Linked": 0.8}
     T = type_map.get(order_type, 1.0)
+
+    # المعادلة
     score = (distance * 1.0 + weight * 0.5 + parcels * 0.3) * Z * T
     return score
 
 # ========================
-# واجهة التطبيق
+# الواجهة
 # ========================
 st.set_page_config(page_title="Eastern Union Route Planner", layout="wide")
 st.title("🚚 Dynamic Route Planner with Custom Scoring")
 
 # نقطة البداية
 st.subheader("📍 نقطة البداية")
-start_lat = st.number_input("Latitude (مثال: 30.044400)", value=30.044400, format="%.6f")
-start_lon = st.number_input("Longitude (مثال: 31.235700)", value=31.235700, format="%.6f")
+start_lat = st.number_input("Latitude (مثال: 30.0444)", value=30.0444, format="%.6f")
+start_lon = st.number_input("Longitude (مثال: 31.2357)", value=31.235700, format="%.6f")
 
-# اختيار طريقة إدخال الطلبات
+# إدخال الطلبات
 st.subheader("📦 أدخل بيانات الطلبات")
-mode = st.radio("كيف تريد إدخال الإحداثيات؟", ["يدوي", "Paste للإحداثيات دفعة واحدة"])
+
+num_orders = st.number_input("كم طلب تريد إضافته؟", min_value=1, max_value=50, value=3)
 
 orders = []
+for i in range(num_orders):
+    st.markdown(f"### الطلب رقم {i+1}")
+    lat = st.number_input(f"Latitude الطلب {i+1}", value=30.050000 + i*0.010000, format="%.6f")
+    lon = st.number_input(f"Longitude الطلب {i+1}", value=31.230000 + i*0.010000, format="%.6f")
+    weight = st.number_input(f"الوزن (كجم) للطلب {i+1}", value=5.0)
+    parcels = st.number_input(f"عدد الطرود للطلب {i+1}", value=2)
+    zone_class = st.selectbox(f"كلاس الحي للطلب {i+1}", ["A", "B", "C"], key=f"zone_{i}")
+    order_type = st.selectbox(f"نوع الطلب {i+1}", ["Delivery", "Pickup", "Linked"], key=f"type_{i}")
+    
+    orders.append({
+        "lat": lat,
+        "lon": lon,
+        "weight": weight,
+        "parcels": parcels,
+        "zone": zone_class,
+        "type": order_type
+    })
 
-if mode == "يدوي":
-    num_orders = st.number_input("كم طلب تريد إضافته؟", min_value=1, max_value=50, value=3)
-
-    for i in range(num_orders):
-        st.markdown(f"### الطلب رقم {i+1}")
-        lat = st.number_input(f"Latitude الطلب {i+1}", value=30.050000 + i*0.010000, format="%.6f")
-        lon = st.number_input(f"Longitude الطلب {i+1}", value=31.230000 + i*0.010000, format="%.6f")
-        weight = st.number_input(f"الوزن (كجم) للطلب {i+1}", value=5.0)
-        parcels = st.number_input(f"عدد الطرود للطلب {i+1}", value=2)
-        zone_class = st.selectbox(f"كلاس الحي للطلب {i+1}", ["A", "B", "C"], key=f"zone_{i}")
-        order_type = st.selectbox(f"نوع الطلب {i+1}", ["Delivery", "Pickup", "Linked"], key=f"type_{i}")
-        
-        orders.append({
-            "lat": lat,
-            "lon": lon,
-            "weight": weight,
-            "parcels": parcels,
-            "zone": zone_class,
-            "type": order_type
-        })
-
-else:
-    st.info("📋 الصق هنا الإحداثيات بالصيغة: `lat,lon,weight,parcels,zone,type` لكل سطر")
-    coords_text = st.text_area("الصق هنا الإحداثيات")
-
-    if coords_text.strip():
-        for line in coords_text.strip().split("\n"):
-            parts = line.split(",")
-            if len(parts) == 6:
-                lat, lon, weight, parcels, zone_class, order_type = parts
-                orders.append({
-                    "lat": float(lat.strip()),
-                    "lon": float(lon.strip()),
-                    "weight": float(weight.strip()),
-                    "parcels": int(parcels.strip()),
-                    "zone": zone_class.strip(),
-                    "type": order_type.strip()
-                })
-
-if st.button("🚀 احسب المسار الأمثل") and orders:
-    # احسب المسافات والـ Score
+if st.button("🚀 احسب المسار الأمثل"):
+    # احسب المسافات و الـ Score
     for order in orders:
         dist = haversine(start_lat, start_lon, order["lat"], order["lon"])
         order["distance"] = dist
         order["score"] = calculate_score(dist, order["weight"], order["parcels"], order["zone"], order["type"])
     
-    # رتب الطلبات حسب Score
+    # رتب الطلبات حسب الـ Score
     sorted_orders = sorted(orders, key=lambda x: x["score"])
 
-    # عرض النتائج
+    # اعرض الترتيب
     st.subheader("✅ الترتيب المقترح")
     for i, order in enumerate(sorted_orders, start=1):
-        st.write(f"{i}. ({order['lat']:.6f}, {order['lon']:.6f}) | المسافة: {order['distance']:.2f} كم | Score: {order['score']:.2f}")
+        st.write(
+            f"{i}. ({order['lat']:.6f}, {order['lon']:.6f}) | المسافة: {order['distance']:.2f} كم | Score: {order['score']:.2f}"
+        )
 
-    # رسم الخريطة
+    # ارسم الخريطة
     m = folium.Map(location=[start_lat, start_lon], zoom_start=12)
     folium.Marker(
         [start_lat, start_lon],
@@ -113,8 +99,11 @@ if st.button("🚀 احسب المسار الأمثل") and orders:
             icon=folium.Icon(color="blue" if order["type"]=="Delivery" else "red")
         ).add_to(marker_cluster)
 
+    # وصل النقاط بخط
     route_coords = [(start_lat, start_lon)] + [(o["lat"], o["lon"]) for o in sorted_orders]
     folium.PolyLine(route_coords, color="orange", weight=3).add_to(m)
 
     st.subheader("🗺️ المسار على الخريطة")
     st.components.v1.html(m._repr_html_(), height=500)
+
+
