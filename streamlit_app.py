@@ -1,65 +1,108 @@
 import streamlit as st
 import folium
-from streamlit_folium import st_folium
+from folium.plugins import MarkerCluster
+from math import radians, cos, sin, asin, sqrt
 
+# ========================
+# دالة حساب المسافة بين نقطتين بالإحداثيات
+# ========================
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # نصف قطر الأرض بالكيلومتر
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a))
+    return R * c
+
+# ========================
+# دالة حساب الـ Score
+# ========================
+def calculate_score(distance, weight, parcels, zone_class, order_type):
+    # تحويل كلاس الحي إلى رقم
+    zone_map = {"A": 1.0, "B": 1.5, "C": 2.0}
+    Z = zone_map.get(zone_class.upper(), 1.5)
+    
+    # نوع الطلب
+    type_map = {"Delivery": 1.0, "Pickup": 1.2, "Linked": 0.8}
+    T = type_map.get(order_type, 1.0)
+
+    # المعادلة
+    score = (distance * 1.0 + weight * 0.5 + parcels * 0.3) * Z * T
+    return score
+
+# ========================
+# الواجهة
+# ========================
 st.set_page_config(page_title="Eastern Union Route Planner", layout="wide")
+st.title("🚚 Dynamic Route Planner with Custom Scoring")
 
-st.title("🚚 Eastern Union Route Planner")
+# نقطة البداية
+st.subheader("📍 نقطة البداية")
+start_lat = st.number_input("Latitude (مثال: 30.0444)", value=30.0444, format="%.6f")
+start_lon = st.number_input("Longitude (مثال: 31.2357)", value=31.235700, format="%.6f")
 
-# تخزين النقاط
-if "locations" not in st.session_state:
-    st.session_state.locations = []
+# إدخال الطلبات
+st.subheader("📦 أدخل بيانات الطلبات")
 
-st.sidebar.header("➕ أضف نقطة توصيل")
+num_orders = st.number_input("كم طلب تريد إضافته؟", min_value=1, max_value=50, value=3)
 
-# إدخال البيانات بنفس الشكل القديم
-lat = st.sidebar.text_input("Latitude (مثال: 30.018745)")
-lon = st.sidebar.text_input("Longitude (مثال: 31.230984)")
-weight = st.sidebar.number_input("وزن الطرود (كجم)", min_value=0.1, step=0.1)
-num_packages = st.sidebar.number_input("عدد الطرود", min_value=1, step=1)
-zone = st.sidebar.selectbox("كلاس الحي", ["A", "B", "C"])
-order_type = st.sidebar.selectbox("نوع الطلب", ["Delivery", "Pickup", "Linked Delivery"])
+orders = []
+for i in range(num_orders):
+    st.markdown(f"### الطلب رقم {i+1}")
+    lat = st.number_input(f"Latitude الطلب {i+1}", value=30.050000 + i*0.010000, format="%.6f")
+    lon = st.number_input(f"Longitude الطلب {i+1}", value=31.230000 + i*0.010000, format="%.6f")
+    weight = st.number_input(f"الوزن (كجم) للطلب {i+1}", value=5.0)
+    parcels = st.number_input(f"عدد الطرود للطلب {i+1}", value=2)
+    zone_class = st.selectbox(f"كلاس الحي للطلب {i+1}", ["A", "B", "C"], key=f"zone_{i}")
+    order_type = st.selectbox(f"نوع الطلب {i+1}", ["Delivery", "Pickup", "Linked"], key=f"type_{i}")
+    
+    orders.append({
+        "lat": lat,
+        "lon": lon,
+        "weight": weight,
+        "parcels": parcels,
+        "zone": zone_class,
+        "type": order_type
+    })
 
-if st.sidebar.button("✅ أضف النقطة"):
-    try:
-        # حفظ القيم بدقة كاملة
-        lat_f = float(lat)
-        lon_f = float(lon)
-        st.session_state.locations.append({
-            "lat": lat_f,
-            "lon": lon_f,
-            "weight": weight,
-            "num_packages": num_packages,
-            "zone": zone,
-            "type": order_type
-        })
-        st.sidebar.success("✅ تم إضافة النقطة!")
-    except ValueError:
-        st.sidebar.error("❌ تأكد من إدخال الإحداثيات بشكل صحيح")
+if st.button("🚀 احسب المسار الأمثل"):
+    # احسب المسافات و الـ Score
+    for order in orders:
+        dist = haversine(start_lat, start_lon, order["lat"], order["lon"])
+        order["distance"] = dist
+        order["score"] = calculate_score(dist, order["weight"], order["parcels"], order["zone"], order["type"])
+    
+    # رتب الطلبات حسب الـ Score
+    sorted_orders = sorted(orders, key=lambda x: x["score"])
 
-# عرض النقاط بنفس الستايل القديم
-if st.session_state.locations:
-    st.subheader("📍 النقاط المدخلة")
-    for i, loc in enumerate(st.session_state.locations, 1):
+    # اعرض الترتيب
+    st.subheader("✅ الترتيب المقترح")
+    for i, order in enumerate(sorted_orders, start=1):
         st.write(
-            f"**{i}. ({loc['lat']:.6f}, {loc['lon']:.6f})** | وزن: {loc['weight']} كجم | طرود: {loc['num_packages']} | حي: {loc['zone']} | نوع: {loc['type']}"
+            f"{i}. ({order['lat']:.6f}, {order['lon']:.6f}) | المسافة: {order['distance']:.2f} كم | Score: {order['score']:.2f}"
         )
 
-    # خريطة بسيطة زي النسخة القديمة
-    avg_lat = sum([l["lat"] for l in st.session_state.locations]) / len(st.session_state.locations)
-    avg_lon = sum([l["lon"] for l in st.session_state.locations]) / len(st.session_state.locations)
+    # ارسم الخريطة
+    m = folium.Map(location=[start_lat, start_lon], zoom_start=12)
+    folium.Marker(
+        [start_lat, start_lon],
+        popup="🚩 Start",
+        icon=folium.Icon(color="green", icon="play")
+    ).add_to(m)
 
-    m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12)
-
-    for i, loc in enumerate(st.session_state.locations, 1):
+    marker_cluster = MarkerCluster().add_to(m)
+    for i, order in enumerate(sorted_orders, start=1):
         folium.Marker(
-            [loc["lat"], loc["lon"]],
-            popup=f"نقطة {i}\nوزن: {loc['weight']} كجم | طرود: {loc['num_packages']} | حي: {loc['zone']} | نوع: {loc['type']}",
-            tooltip=f"نقطة {i}"
-        ).add_to(m)
+            [order["lat"], order["lon"]],
+            popup=f"#{i} - {order['type']} | Score: {order['score']:.2f}",
+            tooltip=f"طلب #{i}",
+            icon=folium.Icon(color="blue" if order["type"]=="Delivery" else "red")
+        ).add_to(marker_cluster)
 
-    st_folium(m, width=900, height=500)
+    # وصل النقاط بخط
+    route_coords = [(start_lat, start_lon)] + [(o["lat"], o["lon"]) for o in sorted_orders]
+    folium.PolyLine(route_coords, color="orange", weight=3).add_to(m)
 
-else:
-    st.info("ℹ️ لم يتم إضافة أي نقاط بعد.")
+    st.subheader("🗺️ المسار على الخريطة")
+    st.components.v1.html(m._repr_html_(), height=500)
 
