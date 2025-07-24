@@ -49,7 +49,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # لوجو في النص
-st.image("https://github.com/mrahmadsamy/eastern-union/blob/main/eastren_union_favicon-removebg-preview.png", width=120)
+st.image("https://github.com/mrahmadsamy/eastern-union/blob/main/eastren_union_favicon-removebg-preview.png?raw=true", width=120)
 st.markdown("<h1 style='text-align:center; color:white;'>Eastern Union – Advanced Route Planner</h1>", unsafe_allow_html=True)
 st.markdown("<h4 style='text-align:center; color:gray;'>الكفاءة... منهج وليست صدفة</h4>", unsafe_allow_html=True)
 st.markdown("---")
